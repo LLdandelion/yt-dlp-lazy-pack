@@ -1,0 +1,6 @@
+1.双击点击start.bat打开脚本
+2.确保电脑有powershell
+3.建议电脑安装ffmpeg并添加到PATH
+4.下载文件在Downloads文件夹
+5.源库：https://github.com/yt-dlp/yt-dlp
+6.特别感谢deepseek的帮助

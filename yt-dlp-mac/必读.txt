@@ -1,0 +1,15 @@
+1.首次启动前进行以下操作：
+  （1）确保文件路径上没有中文，并复制yt-dlp-mac.sh所在文件夹路径（例：/path/to/yt-dlp-mac）
+  （2）按下 Command + 空格 打开 Spotlight，输入 终端 后回车
+  （3）输入 cd /path/to/yt-dlp-mac（举例，以实际路径为准）
+  （5）输入chmod +x launch.command
+  （4）输入 chmod +x yt-dlp-mac.sh
+  ps：如果提示“无法打开，因为来自身份不明的开发者”，前往 系统设置 → 隐私与安全性 → 仍要打开。
+2.打开脚本：运行 launch.command
+  ps（1）首次运行需安装依赖：
+        如果未安装 yt-dlp，先选择 选项1。
+        如果下载视频时提示缺少 FFmpeg，选择 选项5 自动安装。
+    （2）确保能访问YouTube（可能需要代理）。
+    （3）首次运行 .command 文件时，系统可能提示“来自身份不明的开发者”，需手动允许（仅首次）。
+3.源库：https://github.com/yt-dlp/yt-dlp
+4.特别感谢deepseek的帮助
