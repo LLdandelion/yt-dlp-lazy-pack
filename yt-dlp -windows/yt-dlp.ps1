@@ -1,102 +1,227 @@
-<#
-YouTubeÊÓÆµÏÂÔØ½Å±¾£¨Ïà¶ÔÂ·¾¶°æ£©
-¹¦ÄÜ£º°²×°/¸üĞÂyt-dlp¡¢ÏÂÔØµ¥¸öÊÓÆµ¡¢ÏÂÔØ²¥·ÅÁĞ±í
+ 
+YouTubeéŸ³è§†é¢‘ä¸‹è½½è„šæœ¬
+åŠŸèƒ½ï¼šå®‰è£…/æ›´æ–°yt-dlpï¼Œä¸‹è½½è§†é¢‘æˆ–éŸ³é¢‘ï¼Œæ”¯æŒå‰ªè´´æ¿è¯†åˆ«å’ŒURLä¼˜åŒ–
 #>
 
-Write-Host "====================== Ê¹ÓÃĞëÖª ======================"
-Write-Host "1. ĞèÒªPython 3.7+ÔËĞĞ»·¾³"
-Write-Host "2. ĞèÒªÄÜ·ÃÎÊYouTubeµÄÍøÂç»·¾³"
-Write-Host "3. ÏÂÔØ»áÔ±ÄÚÈİĞèÒª×ÔĞĞĞŞ¸Ä½Å±¾Ìí¼Ócookies"
-Write-Host "4. ÎÄ¼ş½«±£´æµ½µ±Ç°Ä¿Â¼µÄDownloadsÎÄ¼ş¼Ğ"
+# æ–°å¢ï¼šURLå¤„ç†å‡½æ•°
+function Process-YouTubeURL {
+    param(
+        [string]$url
+    )
+    
+    # è§£æURLå‚æ•°
+    $uri = [System.Uri]$url
+    $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+    
+    # å¦‚æœåŒæ—¶å­˜åœ¨vå’Œlistå‚æ•°
+    if ($query['v'] -and $query['list']) {
+        # æ„é€ æ–°æŸ¥è¯¢å­—ç¬¦ä¸²ï¼ˆä¿ç•™é™¤vå’Œindexå¤–çš„æ‰€æœ‰å‚æ•°ï¼‰
+        $newQuery = @{}
+        foreach ($key in $query.Keys) {
+            if ($key -notin @('v', 'index')) {
+                $newQuery[$key] = $query[$key]
+            }
+        }
+        # æ„å»ºæ–°URL
+        $newUri = [System.UriBuilder]$uri
+        $newUri.Query = ($newQuery.GetEnumerator() | ForEach-Object {
+            "$($_.Key)=$([System.Web.HttpUtility]::UrlEncode($_.Value))"
+        }) -join '&'
+        return $newUri.ToString()
+    }
+    return $url
+}
+
+Write-Host "====================== ä½¿ç”¨é¡»çŸ¥ ======================"
+Write-Host "1. éœ€è¦Python 3.7+ç¯å¢ƒ"
+Write-Host "2. éœ€è¦èƒ½è®¿é—®YouTubeçš„ç½‘ç»œç¯å¢ƒ"
+Write-Host "3. ä¸‹è½½ä¼šå‘˜å†…å®¹éœ€è‡ªè¡Œä¿®æ”¹è„šæœ¬æˆ–æä¾›cookies"
+Write-Host "4. æ–‡ä»¶é»˜è®¤ä¿å­˜åˆ°å½“å‰ç›®å½•çš„Downloadsæ–‡ä»¶å¤¹"
 Write-Host "===================================================`n"
 
-# ³õÊ¼»¯»·¾³±äÁ¿
+# åˆå§‹åŒ–é…ç½®
 $ffmpegAvailable = $false
-$firstRun = $true
 $downloadPath = Join-Path (Get-Location) "Downloads"
 
-# ×Ô¶¯´´½¨ÏÂÔØÄ¿Â¼
+# è®¾ç½®TLSåè®®ç‰ˆæœ¬
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# åˆ›å»ºä¸‹è½½ç›®å½•
 if (-not (Test-Path $downloadPath)) {
     New-Item -ItemType Directory -Path $downloadPath -Force | Out-Null
-    Write-Host "[!] ÒÑ×Ô¶¯´´½¨ÏÂÔØÄ¿Â¼£º$downloadPath"
+    Write-Host "[!] å·²è‡ªåŠ¨åˆ›å»ºä¸‹è½½ç›®å½•: $downloadPath"
+}
+
+# ================== æ–°å¢ï¼šyt-dlpç‰ˆæœ¬æ£€æµ‹é€»è¾‘ ==================
+$ytdlpInstalled = $false
+$ytdlpUpdateAvailable = $false
+
+if (Get-Command yt-dlp -ErrorAction SilentlyContinue) {
+    $ytdlpInstalled = $true
+    Write-Host "[âˆš] yt-dlpå·²å®‰è£…" -ForegroundColor Green
+    
+    try {
+        # è·å–æœ¬åœ°ç‰ˆæœ¬
+        $localVersion = (yt-dlp --version).Trim()
+        Write-Host "å½“å‰ç‰ˆæœ¬: $localVersion"
+        
+        # è·å–æœ€æ–°ç‰ˆæœ¬
+        try {
+            $apiResponse = Invoke-RestMethod -Uri "https://pypi.org/pypi/yt-dlp/json" -ErrorAction Stop
+            $latestVersion = $apiResponse.info.version
+            Write-Host "æœ€æ–°ç‰ˆæœ¬: $latestVersion"
+            
+            # ç‰ˆæœ¬æ¯”è¾ƒ
+            if ([version]$localVersion -lt [version]$latestVersion) {
+                $ytdlpUpdateAvailable = $true
+                Write-Host "[!] å‘ç°æ–°ç‰ˆæœ¬å¯ç”¨" -ForegroundColor Yellow
+            } else {
+                Write-Host "[âˆš] å½“å‰å·²æ˜¯æœ€æ–°ç‰ˆæœ¬" -ForegroundColor Green
+            }
+        } catch {
+            Write-Host "[!] æ— æ³•è·å–æœ€æ–°ç‰ˆæœ¬: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "[!] æ— æ³•è·å–æœ¬åœ°ç‰ˆæœ¬: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[Ã—] yt-dlpæœªå®‰è£…ï¼Œè¯·ä½¿ç”¨ä¸»èœå•é€‰é¡¹1å®‰è£…" -ForegroundColor Red
+}
+
+# æ›´æ–°æç¤º
+if ($ytdlpUpdateAvailable) {
+    $choice = Read-Host "`næ£€æµ‹åˆ°æ–°ç‰ˆæœ¬ $latestVersionï¼Œæ˜¯å¦ç«‹å³æ›´æ–°ï¼Ÿ(Y/N)"
+    if ($choice -match '^[yY]') {
+        Write-Host "æ­£åœ¨æ›´æ–°yt-dlp..."
+        python -m pip install --upgrade yt-dlp
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[âˆš] æ›´æ–°æˆåŠŸ" -ForegroundColor Green
+        } else {
+            Write-Host "[Ã—] æ›´æ–°å¤±è´¥ï¼Œè¯·æ‰‹åŠ¨æ›´æ–°" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "[!] è­¦å‘Šï¼šä½¿ç”¨æ—§ç‰ˆæœ¬å¯èƒ½å¯¼è‡´åŠŸèƒ½å¼‚å¸¸ï¼" -ForegroundColor Yellow
+    }
+    Start-Sleep -Seconds 2
+}
+# ================== ç‰ˆæœ¬æ£€æµ‹é€»è¾‘ç»“æŸ ==================
+
+# è‡ªåŠ¨æ£€æµ‹FFmpeg
+try {
+    Get-Command ffmpeg -ErrorAction Stop | Out-Null
+    $ffmpegAvailable = $true
+    Write-Host "[âˆš] FFmpegå·²å®‰è£…" -ForegroundColor Green
+} catch {
+    Write-Host "[Ã—] æœªæ£€æµ‹åˆ°FFmpegï¼è¯·ä»å®˜ç½‘ä¸‹è½½å¹¶æ·»åŠ åˆ°ç³»ç»ŸPATH: https://www.ffmpeg.org/download.html" -ForegroundColor Red
 }
 
 while ($true) {
-    # Ê×´ÎÔËĞĞ¼ì²éffmpeg
-    if ($firstRun) {
-        $checkFFmpeg = Read-Host "ÊÇ·ñÒÑ°²×°FFmpeg²¢Ìí¼Óµ½ÏµÍ³PATH£¿(Y/N)"
-        if ($checkFFmpeg -in @('Y','y')) {
-            try {
-                Get-Command ffmpeg -ErrorAction Stop | Out-Null
-                $ffmpegAvailable = $true
-                Write-Host "[¡Ì] FFmpeg¼ì²âÍ¨¹ı"
-            } catch {
-                Write-Host "[¡Á] Î´ÕÒµ½FFmpeg£¬²¿·Ö¹¦ÄÜ¿ÉÄÜÊÜÏŞ"
-            }
-        }
-        $firstRun = $false
-    }
-
-    # ÏÔÊ¾Ö÷²Ëµ¥
-    Write-Host "`n============= Ö÷²Ëµ¥ ============="
-    Write-Host "1. Í¨¹ıpip°²×°yt-dlp"
-    Write-Host "2. ¸üĞÂyt-dlp"
-    Write-Host "3. ÏÂÔØµ¥¸öÊÓÆµ£¨±£´æµ½£º$downloadPath£©"
-    Write-Host "4. ÏÂÔØ²¥·ÅÁĞ±í£¨±£´æµ½£º$downloadPath£©"
-    Write-Host "5. ÍË³ö½Å±¾"
+    # æ˜¾ç¤ºä¸»èœå•
+    Write-Host "`n============= ä¸»èœå• ============="
+    Write-Host "1. å®‰è£…/æ›´æ–°yt-dlp (é€šè¿‡pip)"
+    Write-Host "2. ä¸‹è½½è§†é¢‘ï¼ˆä¿å­˜åˆ°: $downloadPath)"
+    Write-Host "3. ä¸‹è½½éŸ³é¢‘ï¼ˆä¿å­˜åˆ°: $downloadPathï¼‰"
+    Write-Host "4. é€€å‡ºè„šæœ¬"
     Write-Host "=================================`n"
 
-    $choice = Read-Host "ÇëÊäÈëÑ¡ÏîÊı×Ö"
+    $choice = Read-Host "è¯·è¾“å…¥é€‰é¡¹"
     
     switch ($choice) {
         '1' {
-            Write-Host "¿ªÊ¼°²×°yt-dlp..."
-            python -m pip install yt-dlp
+            $action = Read-Host "è¾“å…¥ '1' å®‰è£…yt-dlp æˆ– '2' æ›´æ–°yt-dlp"
+            if ($action -eq '1') {
+                Write-Host "æ­£åœ¨å®‰è£…yt-dlp..."
+                python -m pip install yt-dlp
+            } elseif ($action -eq '2') {
+                Write-Host "æ­£åœ¨æ›´æ–°yt-dlp..."
+                python -m pip install --upgrade yt-dlp
+            } else {
+                Write-Host "æ— æ•ˆè¾“å…¥ï¼Œæ“ä½œå·²å–æ¶ˆ" -ForegroundColor Yellow
+                continue
+            }
+            
             if ($LASTEXITCODE -ne 0) {
-                Write-Host "[´íÎó] °²×°Ê§°Ü£¬Çë¼ì²éPython»·¾³" -ForegroundColor Red
+                Write-Host "[é”™è¯¯] æ“ä½œå¤±è´¥ï¼Œè¯·æ£€æŸ¥Pythonç¯å¢ƒ" -ForegroundColor Red
             }
         }
         
         '2' {
-            Write-Host "¼ì²é¸üĞÂ..."
-            python -m pip install --upgrade yt-dlp
+            # å‰ªè´´æ¿å¤„ç†é€»è¾‘ï¼ˆä¿®æ”¹ç‚¹ï¼šå…è®¸ç›´æ¥å›è½¦ç¡®è®¤ï¼‰
+            $clipboardContent = Get-Clipboard -ErrorAction SilentlyContinue
+            $ytRegex = '^https?://(www\.)?youtube\.com/watch\?.*list=.*'
+            
+            if ($clipboardContent -match $ytRegex) {
+                Write-Host "å‰ªè´´æ¿æ£€æµ‹åˆ°YouTubeé“¾æ¥: $clipboardContent"
+                $confirm = Read-Host "æ˜¯å¦ç›´æ¥ä½¿ç”¨ï¼Ÿ(ç›´æ¥å›è½¦ç¡®è®¤/Y/N)"
+                # æ­£åˆ™åŒ¹é…ï¼šå…è®¸ç©ºè¾“å…¥/Y/y
+                if ($confirm -match '^[yY]?$') {
+                    $url = $clipboardContent
+                } else {
+                    $url = Read-Host "è¯·è¾“å…¥è§†é¢‘URL"
+                }
+            } else {
+                Write-Host "[!] å‰ªè´´æ¿å†…å®¹æ— æ•ˆï¼Œè¯·æ‰‹åŠ¨è¾“å…¥URL" -ForegroundColor Yellow
+                $url = Read-Host "è¯·è¾“å…¥è§†é¢‘URL"
+            }
+            
+            # å¤„ç†URLå‚æ•°
+            $processedUrl = Process-YouTubeURL $url
+            if ($processedUrl -ne $url) {
+                Write-Host "[!] å·²ä¼˜åŒ–URLä¸ºæ’­æ”¾åˆ—è¡¨æ¨¡å¼: $processedUrl"
+            }
+            
+            $command = "yt-dlp -f 'bestvideo+bestaudio' `"$processedUrl`" -o '%(title)s.%(ext)s' -P `"$downloadPath`" "
+            if ($ffmpegAvailable) { $command += " --download-sections `"*from-url`"" }
+            Write-Host "æ‰§è¡Œå‘½ä»¤: $command"
+            Invoke-Expression $command
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[é”™è¯¯] ä¸‹è½½å¤±è´¥ï¼Œè¯·æ£€æŸ¥URLæˆ–ç½‘ç»œ" -ForegroundColor Red
+            }
         }
         
         '3' {
-            $url = Read-Host "ÊäÈëÊÓÆµURL£¨https://www.youtube.com/watch?v=<>&list=¡¶¡·£¬ÇëÊäÈë<>Î»ÖÃµÄ×Ö·û£©"
-            $command = "yt-dlp -f 'bestvideo+bestaudio' `"https://www.youtube.com/watch?v=$url`" -o '%(title)s.%(ext)s' -P `"$downloadPath`" --no-playlist"
-            if ($ffmpegAvailable) {
-                $command += " --download-sections `"*from-url`""
+            # å‰ªè´´æ¿å¤„ç†é€»è¾‘ï¼ˆä¿®æ”¹ç‚¹ï¼šå…è®¸ç›´æ¥å›è½¦ç¡®è®¤ï¼‰
+            $clipboardContent = Get-Clipboard -ErrorAction SilentlyContinue
+            $ytRegex = '^https?://(www\.)?youtube\.com/watch\?.*list=.*'
+            
+            if ($clipboardContent -match $ytRegex) {
+                Write-Host "å‰ªè´´æ¿æ£€æµ‹åˆ°YouTubeé“¾æ¥: $clipboardContent"
+                $confirm = Read-Host "æ˜¯å¦ç›´æ¥ä½¿ç”¨ï¼Ÿ(ç›´æ¥å›è½¦ç¡®è®¤/Y/N)"
+                # æ­£åˆ™åŒ¹é…ï¼šå…è®¸ç©ºè¾“å…¥/Y/y
+                if ($confirm -match '^[yY]?$') {
+                    $url = $clipboardContent
+                } else {
+                    $url = Read-Host "è¯·è¾“å…¥è§†é¢‘URL"
+                }
+            } else {
+                Write-Host "[!] å‰ªè´´æ¿å†…å®¹æ— æ•ˆï¼Œè¯·æ‰‹åŠ¨è¾“å…¥URL" -ForegroundColor Yellow
+                $url = Read-Host "è¯·è¾“å…¥è§†é¢‘URL"
             }
-            Write-Host "Ö´ĞĞÃüÁî£º$command"
+            
+            # å¤„ç†URLå‚æ•°
+            $processedUrl = Process-YouTubeURL $url
+            if ($processedUrl -ne $url) {
+                Write-Host "[!] å·²ä¼˜åŒ–URLä¸ºæ’­æ”¾åˆ—è¡¨æ¨¡å¼: $processedUrl"
+            }
+            
+            $command = "yt-dlp -f 'bestaudio' `"$processedUrl`" -o '%(title)s.%(ext)s' -P `"$downloadPath`" --no-playlist"
+            if ($ffmpegAvailable) { $command += " --download-sections `"*from-url`"" }
+            Write-Host "æ‰§è¡Œå‘½ä»¤: $command"
             Invoke-Expression $command
             if ($LASTEXITCODE -ne 0) {
-                Write-Host "[´íÎó] ÏÂÔØÊ§°Ü£¬Çë¼ì²éURLºÍÍøÂçÁ¬½Ó" -ForegroundColor Red
+                Write-Host "[é”™è¯¯] ä¸‹è½½å¤±è´¥ï¼Œè¯·æ£€æŸ¥URLæˆ–ç½‘ç»œ" -ForegroundColor Red
             }
         }
         
-        '4' {
-            $url = Read-Host "ÊäÈë²¥·ÅÁĞ±íURL£¨https://www.youtube.com/watch?v=<>&list=¡¶¡·£¬ÇëÊäÈë¡¶¡·Î»ÖÃµÄ×Ö·û£©"
-            $command = "yt-dlp -f 'bestvideo+bestaudio' `"https://www.youtube.com/playlist?list=$url`" -o '%(title)s.%(ext)s' -P `"$downloadPath`" --no-playlist " 
-            if ($ffmpegAvailable) {
-                $command += " --download-sections `"*from-url`""
-            }
-            Write-Host "Ö´ĞĞÃüÁî£º$command"
-            Invoke-Expression $command
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "[´íÎó] ÏÂÔØÊ§°Ü£¬Çë¼ì²éURLºÍÍøÂçÁ¬½Ó" -ForegroundColor Red
-            }
-        }
-        
-        '5' { exit }
+        '4' { exit }
         
         default {
-            Write-Host "ÎŞĞ§ÊäÈë£¬ÇëÖØĞÂÑ¡Ôñ" -ForegroundColor Yellow
+            Write-Host "æ— æ•ˆè¾“å…¥ï¼Œè¯·é‡æ–°é€‰æ‹©" -ForegroundColor Yellow
         }
     }
 
-    # Ñ­»·¼ä¸ô
+    # å¾ªç¯æ§åˆ¶
     Write-Host "`n---------------------------------"
-    $cont = Read-Host "ÊÇ·ñ¼ÌĞø²Ù×÷£¿(Y/N)"
+    $cont = Read-Host "æ˜¯å¦ç»§ç»­æ“ä½œï¼Ÿ(Y/N)"
     if ($cont -notmatch '^[yY]') { break }
 }
